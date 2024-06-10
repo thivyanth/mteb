@@ -35,7 +35,7 @@ class DenseRetrievalExactSearch:
     def __init__(
         self,
         model,
-        batch_size: int = 128,
+        batch_size: int = 24,
         corpus_chunk_size: int = 50000,
         previous_results: str = None,
         **kwargs,
