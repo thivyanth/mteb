@@ -18,7 +18,7 @@ def create_slurm_job_file(
 ) -> Path:
     """Create slurm job file for running a model on a task"""
     slurm_job = f"{slurm_prefix}\n"
-    slurm_job += f"mteb run -m {model_name} -t {task_name} --output_folder {results_folder.resolve()} --co2_tracker true"
+    slurm_job += f"mteb run -m {model_name} -t {task_name} --output_folder {results_folder.resolve()} --co2_tracker true --batch_size 16"
 
     model_path_name = model_name.replace("/", "__")
 
@@ -58,12 +58,15 @@ def run_slurm_jobs(files: list[Path]) -> None:
 
 if __name__ == "__main__":
     # SHOULD BE UPDATED
+# #SBATCH --partition=a3low
+# #SBATCH --gres=gpu:8                 # number of gpus
+    
     slurm_prefix = """#!/bin/bash
 #SBATCH --job-name=mteb
 #SBATCH --nodes=1
-#SBATCH --partition=a3
+#SBATCH --partition=a3low
 #SBATCH --gres=gpu:8                 # number of gpus
-#SBATCH --time 24:00:00             # maximum execution time (HH:MM:SS)
+#SBATCH --time 100:00:00             # maximum execution time (HH:MM:SS)
 #SBATCH --output=/data/niklas/jobs/%x-%j.out           # output file name
 #SBATCH --exclusive
 """
@@ -74,19 +77,19 @@ if __name__ == "__main__":
     slurm_jobs_folder = Path(__file__).parent / "slurm_jobs"
 
     model_names = [
-        # "sentence-transformers/all-MiniLM-L6-v2",
-        # "sentence-transformers/all-MiniLM-L12-v2",
-        # "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        # "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-        # "sentence-transformers/all-mpnet-base-v2",
-        # "sentence-transformers/LaBSE",
-        # "intfloat/multilingual-e5-large-instruct",
-        # "intfloat/e5-mistral-7b-instruct",
-        "GritLM/GritLM-7B",
+        #"sentence-transformers/all-MiniLM-L6-v2",
+        #"sentence-transformers/all-MiniLM-L12-v2",
+        #"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        #"sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        #"sentence-transformers/all-mpnet-base-v2",
+        #"sentence-transformers/LaBSE",
+        "intfloat/multilingual-e5-large-instruct",
+        #"intfloat/e5-mistral-7b-instruct",
+        #"GritLM/GritLM-7B",
         # "GritLM/GritLM-8x7B",
-        # "intfloat/multilingual-e5-small",
-        # "intfloat/multilingual-e5-base",
-        # "intfloat/multilingual-e5-large",
+        #"intfloat/multilingual-e5-small",
+        #"intfloat/multilingual-e5-base",
+        #"intfloat/multilingual-e5-large",
     ]
 
     # expanding to a full list of tasks
