@@ -336,32 +336,35 @@ class MTEB:
                 f"\n\n********************** Evaluating {task.metadata.name} **********************"
             )
 
-            # skip evaluation if results folder exists and overwrite_results is False
-            if output_path:
-                save_path = output_path / f"{task.metadata.name}{task.save_suffix}.json"
-                if save_path.exists() and not overwrite_results:
-                    logger.info(
-                        f"{task.metadata.name} results already exists. Loading results from disk. Set overwrite_results=True to overwrite."
-                    )
-                    mteb_results = MTEBResults.from_disk(save_path)
-                    evaluation_results.append(mteb_results)
-                    del self.tasks[0]  # empty memory
-                    continue
-            try:
-                task_eval_splits = (
-                    eval_splits if eval_splits is not None else task.eval_splits
-                )
+            task_eval_splits = eval_splits if eval_splits is not None else task.eval_splits
+            missing_splits = task_eval_splits
 
-                # load data
+            if output_folder:
+                save_path = Path(output_folder) / f"{task.metadata.name}{task.save_suffix}.json"
+                if save_path.exists() and not overwrite_results:
+                    existing_results = self._load_existing_results(save_path)
+                    missing_splits = self._identify_missing_splits(existing_results, task_eval_splits)
+
+                    if not missing_splits:
+                        logger.info(f"{task.metadata.name} results already exist. Skipping evaluation.")
+                        evaluation_results.append(MTEBResults.from_dict(existing_results))
+                        del self.tasks[0]  # empty memory
+                        continue
+
+                    logger.info(f"Running evaluation for missing splits: {missing_splits}")
+
+            try:
+                # load data for missing splits
                 logger.info(f"Loading dataset for {task.metadata_dict['name']}")
                 task.check_if_dataset_is_superseeded()
-                task.load_data(eval_splits=task_eval_splits, **kwargs)
+                task.load_data(eval_splits=list(missing_splits), **kwargs)
 
                 # run evaluation
                 task_results = {}
                 evaluation_time = 0
                 kg_co2_emissions: int | None = 0 if co2_tracker else None
-                for split in task_eval_splits:
+
+                for split in missing_splits:
                     if co2_tracker:
                         try:
                             from codecarbon import EmissionsTracker
@@ -404,15 +407,21 @@ class MTEB:
                     if verbosity >= 1:
                         logger.info(f"Scores: {results}")
 
-                mteb_task_result = MTEBResults.from_task_results(
-                    task,
-                    task_results,
-                    evaluation_time=evaluation_time,
-                    kg_co2_emissions=kg_co2_emissions,
-                )
+                # merge new results with existing results if applicable
+                if save_path.exists() and not overwrite_results:
+                    existing_results = self._load_existing_results(save_path)
+                    existing_results["scores"].update(task_results)
+                    mteb_task_result = MTEBResults.from_dict(existing_results)
+                else:
+                    mteb_task_result = MTEBResults.from_task_results(
+                        task,
+                        task_results,
+                        evaluation_time=evaluation_time,
+                        kg_co2_emissions=kg_co2_emissions,
+                    )
 
-                # save results
-                if output_path:
+                # Save results
+                if output_folder:
                     with open(save_path, "w") as f_out:
                         json.dump(
                             mteb_task_result.to_dict(), f_out, indent=2, sort_keys=True
@@ -488,3 +497,11 @@ class MTEB:
 
         with save_path.open("w") as f:
             json.dump(model_meta.to_dict(), f)
+
+    def _load_existing_results(self, save_path: Path) -> dict:
+        with open(save_path, "r") as f:
+            return json.load(f)
+
+    def _identify_missing_splits(self, existing_results: dict, requested_splits: list[str]) -> set[str]:
+        existing_splits = set(existing_results.get("scores", {}).keys())
+        return set(requested_splits) - existing_splits
